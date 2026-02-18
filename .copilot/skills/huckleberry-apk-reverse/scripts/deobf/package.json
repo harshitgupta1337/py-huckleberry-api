@@ -1,0 +1,28 @@
+{
+  "name": "huckleberry-api",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "deobf": "node deobf-pretty.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Woyken/py-huckleberry-api.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Woyken/py-huckleberry-api/issues"
+  },
+  "homepage": "https://github.com/Woyken/py-huckleberry-api#readme",
+  "devDependencies": {
+    "obfuscator-io-deobfuscator": "^1.0.6",
+    "prettier": "^3.8.1"
+  }
+}

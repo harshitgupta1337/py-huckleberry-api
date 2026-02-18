@@ -70,32 +70,20 @@ FIRESTORE_ENDPOINT = "firestore.googleapis.com"  # gRPC, not REST
 
 ### APK Decompilation for Research
 
-To discover new features or verify data structures, decompile the Huckleberry APK:
+To discover new features or verify data structures, use the dedicated APK reverse-engineering skill:
 
-**Tools Required**:
-- [apkeep](https://github.com/EFForg/apkeep) - Download APKs from Google Play
-- [JADX](https://github.com/skylot/jadx) - Decompile APK to Java/resources
+- `.copilot/skills/huckleberry-apk-reverse/SKILL.md`
 
-**Download APK**:
-```bash
-# Install apkeep (requires Rust/Cargo)
-cargo install apkeep
+The skill is now the canonical workflow for:
+- APK download/version pinning (`apkeep`)
+- JADX decompilation and folder conventions
+- JS deobfuscation (`deobf-pretty.mjs`) when working with obfuscated versions
+- Cross-artifact validation and findings hygiene
 
-# Download specific version (recommended: 0.9.258 - last unobfuscated)
-apkeep -a com.huckleberry_labs.app -v 0.9.258 .
-
-# Download latest version
-apkeep -a com.huckleberry_labs.app .
-```
-
-**Decompile with JADX**:
-```bash
-# GUI mode (recommended for exploration)
-jadx-gui com.huckleberry_labs.app_0.9.258.apk
-
-# Command line mode (for automation)
-jadx -d "jadx output" com.huckleberry_labs.app_0.9.258.apk
-```
+**CRITICAL AGENT RULE - VALUE/ENUM VALIDATION REQUIRED**:
+- When adding or changing any enum value, state value, mode, unit, key name, option list, or any other value that originates from the Huckleberry app or Firebase schema, you **must** use `.copilot/skills/huckleberry-apk-reverse/SKILL.md` and validate the value against APK/Firebase evidence first.
+- **Never** add guessed, inferred, placeholder, or convenience values.
+- If a value cannot be validated as factual and true in app evidence, do not add it.
 
 **Important Notes**:
 - **Version 0.9.258 is the last version with readable (unobfuscated) source code**
@@ -109,20 +97,6 @@ jadx -d "jadx output" com.huckleberry_labs.app_0.9.258.apk
 2. **JavaScript sources** (`resources/assets/www/`): UI logic, user interactions, display formats
 3. **strings.xml** (`resources/res/values/`): Configuration values, API endpoints, Firebase config
 4. **AndroidManifest.xml** (`resources/`): App permissions, services, activities
-
-**Post-Decompilation Formatting**:
-
-Format JavaScript files after decompilation for readability:
-```bash
-npx prettier --write --ignore-path "" "jadx output/resources/assets/www/*.js"
-```
-
-This reformats minified/webpacked JavaScript into human-readable code.
-
-**Known Limitations**:
-- Security rules not visible in decompiled code
-- Server-side Cloud Functions not accessible
-- Cordova plugins bridge Java ↔ JavaScript
 
 ### Firestore Collections
 
@@ -1005,10 +979,6 @@ gh release create v0.1.10 --notes "## Added
 
 ---
 
-**Last Updated**: January 12, 2026
-**Library Version**: 0.1.17 (Unreleased)
-**Status**: Stable, feature-complete for sleep, feeding (breastfeeding + bottle), diaper, and growth tracking
-**Test Coverage**: 29 integration tests, CI/CD enabled
 
 ## Recent Changes
 

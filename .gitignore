@@ -47,3 +47,5 @@ credentials.json
 # Others
 jadx output*
 *.apk
+
+node_modules/
