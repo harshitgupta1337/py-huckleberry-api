@@ -874,6 +874,85 @@ class HuckleberryAPI:
         _LOGGER.info("Feeding completed (total duration %ss, L:%ss R:%ss)", total_duration, left_duration,
                      right_duration)
 
+    def log_breast_feeding_at_time(
+        self,
+        child_uid: str,
+        left_duration: float = 0.0,
+        right_duration: float = 0.0,
+        time_ms: float | None = None,
+    ) -> None:
+        """Log a complete breastfeeding session as an instant event.
+
+        Creates the feeding interval document directly without going through
+        the start/pause/switch/complete timer flow. Useful for logging past
+        feedings or importing data.
+
+        Args:
+            child_uid: Child unique identifier
+            left_duration: Duration fed on left side in seconds
+            right_duration: Duration fed on right side in seconds
+            time_ms: Start time in milliseconds. If None, uses current time.
+        """
+        if time_ms is None:
+            now_time = time.time()
+            timestamp_ms = int(now_time * 1000)
+        else:
+            now_time = time_ms / 1000.0
+            timestamp_ms = int(time_ms)
+
+        total_duration = left_duration + right_duration
+
+        _LOGGER.info(
+            "Logging breast feeding for child %s at time %s: L:%.1fs R:%.1fs (total %.1fs)",
+            child_uid, timestamp_ms, left_duration, right_duration, total_duration
+        )
+
+        client = self._get_firestore_client()
+        feed_ref = client.collection("feed").document(child_uid)
+
+        interval_id = f"{timestamp_ms}-{uuid.uuid4().hex[:20]}"
+
+        # Create interval document for history (feed/{child_uid}/intervals)
+        feed_intervals_ref = feed_ref.collection("intervals").document(interval_id)
+
+        try:
+            feed_intervals_ref.set({
+                "mode": "breast",
+                "start": now_time,
+                "lastUpdated": now_time,
+                "leftDuration": left_duration,
+                "rightDuration": right_duration,
+                "offset": self._get_timezone_offset_minutes(),
+                "end_offset": self._get_timezone_offset_minutes(),
+            })
+            _LOGGER.info("Created breast feeding interval entry: %s", interval_id)
+        except Exception as err:
+            _LOGGER.error("Failed to create breast feeding interval entry: %s", err)
+            raise RuntimeError(f"Failed to log breast feeding: {err}") from err
+
+        # Update prefs
+        last_nursing_data: LastNursingData = {
+            "mode": "breast",
+            "start": now_time,
+            "duration": total_duration,
+            "leftDuration": left_duration,
+            "rightDuration": right_duration,
+            "offset": self._get_timezone_offset_minutes(),
+        }
+
+        feed_ref.set({
+            "prefs": {
+                "lastNursing": last_nursing_data,
+                "timestamp": {"seconds": now_time},
+                "local_timestamp": now_time,
+            }
+        }, merge=True)
+
+        _LOGGER.info(
+            "Breast feeding logged: L:%.1fs R:%.1fs (total %.1fs)",
+            left_duration, right_duration, total_duration
+        )
+
     def log_bottle_feeding_at_time(
         self,
         child_uid: str,
