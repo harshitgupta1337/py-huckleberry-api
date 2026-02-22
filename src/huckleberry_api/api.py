@@ -1054,12 +1054,12 @@ class HuckleberryAPI:
         self._listeners.clear()
         self._listener_callbacks.clear()
 
-    def log_diaper(self, child_uid: str, mode: DiaperMode,
+    def log_diaper_at_time(self, child_uid: str, mode: DiaperMode,
                    pee_amount: DiaperAmount | None = None, poo_amount: DiaperAmount | None = None,
                    color: PooColor | None = None, consistency: PooConsistency | None = None,
-                   diaper_rash: bool = False, notes: str | None = None) -> None:
+                   diaper_rash: bool = False, notes: str | None = None, time_ms: float | None = None) -> None:
         """
-        Log a diaper change.
+        Log a diaper change at a specific time.
 
         Args:
             child_uid: Child unique identifier
@@ -1070,16 +1070,21 @@ class HuckleberryAPI:
             consistency: Poo consistency - 'solid', 'loose', 'runny', 'mucousy', 'hard', 'pebbles', 'diarrhea'
             diaper_rash: Whether baby has diaper rash
             notes: Optional notes about this diaper change
+            time_ms: Time in milliseconds when diaper change occurred. If None, uses current time.
         """
-        _LOGGER.info("Logging diaper change for child %s: mode=%s", child_uid, mode)
+        if time_ms is None:
+            current_time = time.time()
+            interval_timestamp_ms = int(current_time * 1000)
+        else:
+            current_time = time_ms / 1000.0
+            interval_timestamp_ms = int(time_ms)
+
+        _LOGGER.info("Logging diaper change for child %s at time %s: mode=%s", child_uid, interval_timestamp_ms, mode)
 
         client = self._get_firestore_client()
         diaper_ref = client.collection("diaper").document(child_uid)
 
-        current_time = time.time()
-
         # Create interval ID (timestamp in ms + random suffix)
-        interval_timestamp_ms = int(current_time * 1000)
         interval_id = f"{interval_timestamp_ms}-{uuid.uuid4().hex[:20]}"
 
         # Build interval data (matching app behavior - minimal fields by default)
@@ -1138,6 +1143,35 @@ class HuckleberryAPI:
             raise
 
         _LOGGER.info("Diaper change logged successfully")
+
+    def log_diaper(self, child_uid: str, mode: DiaperMode,
+                   pee_amount: DiaperAmount | None = None, poo_amount: DiaperAmount | None = None,
+                   color: PooColor | None = None, consistency: PooConsistency | None = None,
+                   diaper_rash: bool = False, notes: str | None = None) -> None:
+        """
+        Log a diaper change.
+
+        Args:
+            child_uid: Child unique identifier
+            mode: One of 'pee', 'poo', 'both', 'dry'
+            pee_amount: Pee amount - 'little', 'medium', 'big', or None (no quantity)
+            poo_amount: Poo amount - 'little', 'medium', 'big', or None (no quantity)
+            color: Poo color - 'yellow', 'brown', 'black', 'green', 'red', 'gray'
+            consistency: Poo consistency - 'solid', 'loose', 'runny', 'mucousy', 'hard', 'pebbles', 'diarrhea'
+            diaper_rash: Whether baby has diaper rash
+            notes: Optional notes about this diaper change
+        """
+        self.log_diaper_at_time(
+            child_uid=child_uid,
+            mode=mode,
+            pee_amount=pee_amount,
+            poo_amount=poo_amount,
+            color=color,
+            consistency=consistency,
+            diaper_rash=diaper_rash,
+            notes=notes,
+            time_ms=None
+        )
 
     def log_growth(self, child_uid: str, weight: float | None = None, height: float | None = None,
                    head: float | None = None, units: MeasurementUnits = "metric") -> None:
