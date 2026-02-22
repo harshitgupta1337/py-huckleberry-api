@@ -874,31 +874,39 @@ class HuckleberryAPI:
         _LOGGER.info("Feeding completed (total duration %ss, L:%ss R:%ss)", total_duration, left_duration,
                      right_duration)
 
-    def log_bottle_feeding(
+    def log_bottle_feeding_at_time(
         self,
         child_uid: str,
         amount: float,
         bottle_type: BottleType = "Formula",
         units: VolumeUnits = "ml",
+        time_ms: float | None = None,
     ) -> None:
-        """Log bottle feeding as instant event.
+        """Log bottle feeding as instant event at a specific time.
 
         Args:
             child_uid: Child unique identifier
             bottle_type: Type of bottle contents ("Breast Milk", "Formula", or "Mixed")
             amount: Amount fed in specified units
             units: Volume units ("ml" or "oz")
+            time_ms: Time in milliseconds when feeding occurred. If None, uses current time.
         """
+        if time_ms is None:
+            now_time = time.time()
+            timestamp_ms = int(now_time * 1000)
+        else:
+            now_time = time_ms / 1000.0
+            timestamp_ms = int(time_ms)
+
         _LOGGER.info(
-            "Logging bottle feeding for child %s: %s %s of %s",
-            child_uid, amount, units, bottle_type
+            "Logging bottle feeding for child %s at time %s: %s %s of %s",
+            child_uid, timestamp_ms, amount, units, bottle_type
         )
 
         client = self._get_firestore_client()
         feed_ref = client.collection("feed").document(child_uid)
 
-        now_time = time.time()
-        interval_id = f"{int(now_time * 1000)}-{uuid.uuid4().hex[:20]}"
+        interval_id = f"{timestamp_ms}-{uuid.uuid4().hex[:20]}"
 
         # Create interval document for bottle feeding
         bottle_entry: FirebaseBottleInterval = {
@@ -946,6 +954,29 @@ class HuckleberryAPI:
         _LOGGER.info(
             "Bottle feeding logged: %s %s of %s",
             amount, units, bottle_type
+        )
+
+    def log_bottle_feeding(
+        self,
+        child_uid: str,
+        amount: float,
+        bottle_type: BottleType = "Formula",
+        units: VolumeUnits = "ml",
+    ) -> None:
+        """Log bottle feeding as instant event.
+
+        Args:
+            child_uid: Child unique identifier
+            bottle_type: Type of bottle contents ("Breast Milk", "Formula", or "Mixed")
+            amount: Amount fed in specified units
+            units: Volume units ("ml" or "oz")
+        """
+        self.log_bottle_feeding_at_time(
+            child_uid=child_uid,
+            amount=amount,
+            bottle_type=bottle_type,
+            units=units,
+            time_ms=None
         )
 
     def _setup_listener(
