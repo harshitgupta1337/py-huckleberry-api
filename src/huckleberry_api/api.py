@@ -874,31 +874,118 @@ class HuckleberryAPI:
         _LOGGER.info("Feeding completed (total duration %ss, L:%ss R:%ss)", total_duration, left_duration,
                      right_duration)
 
-    def log_bottle_feeding(
+    def log_breast_feeding_at_time(
+        self,
+        child_uid: str,
+        left_duration: float = 0.0,
+        right_duration: float = 0.0,
+        time_ms: float | None = None,
+    ) -> None:
+        """Log a complete breastfeeding session as an instant event.
+
+        Creates the feeding interval document directly without going through
+        the start/pause/switch/complete timer flow. Useful for logging past
+        feedings or importing data.
+
+        Args:
+            child_uid: Child unique identifier
+            left_duration: Duration fed on left side in seconds
+            right_duration: Duration fed on right side in seconds
+            time_ms: Start time in milliseconds. If None, uses current time.
+        """
+        if time_ms is None:
+            now_time = time.time()
+            timestamp_ms = int(now_time * 1000)
+        else:
+            now_time = time_ms / 1000.0
+            timestamp_ms = int(time_ms)
+
+        total_duration = left_duration + right_duration
+
+        _LOGGER.info(
+            "Logging breast feeding for child %s at time %s: L:%.1fs R:%.1fs (total %.1fs)",
+            child_uid, timestamp_ms, left_duration, right_duration, total_duration
+        )
+
+        client = self._get_firestore_client()
+        feed_ref = client.collection("feed").document(child_uid)
+
+        interval_id = f"{timestamp_ms}-{uuid.uuid4().hex[:20]}"
+
+        # Create interval document for history (feed/{child_uid}/intervals)
+        feed_intervals_ref = feed_ref.collection("intervals").document(interval_id)
+
+        try:
+            feed_intervals_ref.set({
+                "mode": "breast",
+                "start": now_time,
+                "lastUpdated": now_time,
+                "leftDuration": left_duration,
+                "rightDuration": right_duration,
+                "offset": self._get_timezone_offset_minutes(),
+                "end_offset": self._get_timezone_offset_minutes(),
+            })
+            _LOGGER.info("Created breast feeding interval entry: %s", interval_id)
+        except Exception as err:
+            _LOGGER.error("Failed to create breast feeding interval entry: %s", err)
+            raise RuntimeError(f"Failed to log breast feeding: {err}") from err
+
+        # Update prefs
+        last_nursing_data: LastNursingData = {
+            "mode": "breast",
+            "start": now_time,
+            "duration": total_duration,
+            "leftDuration": left_duration,
+            "rightDuration": right_duration,
+            "offset": self._get_timezone_offset_minutes(),
+        }
+
+        feed_ref.set({
+            "prefs": {
+                "lastNursing": last_nursing_data,
+                "timestamp": {"seconds": now_time},
+                "local_timestamp": now_time,
+            }
+        }, merge=True)
+
+        _LOGGER.info(
+            "Breast feeding logged: L:%.1fs R:%.1fs (total %.1fs)",
+            left_duration, right_duration, total_duration
+        )
+
+    def log_bottle_feeding_at_time(
         self,
         child_uid: str,
         amount: float,
         bottle_type: BottleType = "Formula",
         units: VolumeUnits = "ml",
+        time_ms: float | None = None,
     ) -> None:
-        """Log bottle feeding as instant event.
+        """Log bottle feeding as instant event at a specific time.
 
         Args:
             child_uid: Child unique identifier
             bottle_type: Type of bottle contents ("Breast Milk", "Formula", or "Mixed")
             amount: Amount fed in specified units
             units: Volume units ("ml" or "oz")
+            time_ms: Time in milliseconds when feeding occurred. If None, uses current time.
         """
+        if time_ms is None:
+            now_time = time.time()
+            timestamp_ms = int(now_time * 1000)
+        else:
+            now_time = time_ms / 1000.0
+            timestamp_ms = int(time_ms)
+
         _LOGGER.info(
-            "Logging bottle feeding for child %s: %s %s of %s",
-            child_uid, amount, units, bottle_type
+            "Logging bottle feeding for child %s at time %s: %s %s of %s",
+            child_uid, timestamp_ms, amount, units, bottle_type
         )
 
         client = self._get_firestore_client()
         feed_ref = client.collection("feed").document(child_uid)
 
-        now_time = time.time()
-        interval_id = f"{int(now_time * 1000)}-{uuid.uuid4().hex[:20]}"
+        interval_id = f"{timestamp_ms}-{uuid.uuid4().hex[:20]}"
 
         # Create interval document for bottle feeding
         bottle_entry: FirebaseBottleInterval = {
@@ -946,6 +1033,29 @@ class HuckleberryAPI:
         _LOGGER.info(
             "Bottle feeding logged: %s %s of %s",
             amount, units, bottle_type
+        )
+
+    def log_bottle_feeding(
+        self,
+        child_uid: str,
+        amount: float,
+        bottle_type: BottleType = "Formula",
+        units: VolumeUnits = "ml",
+    ) -> None:
+        """Log bottle feeding as instant event.
+
+        Args:
+            child_uid: Child unique identifier
+            bottle_type: Type of bottle contents ("Breast Milk", "Formula", or "Mixed")
+            amount: Amount fed in specified units
+            units: Volume units ("ml" or "oz")
+        """
+        self.log_bottle_feeding_at_time(
+            child_uid=child_uid,
+            amount=amount,
+            bottle_type=bottle_type,
+            units=units,
+            time_ms=None
         )
 
     def _setup_listener(
@@ -1023,12 +1133,12 @@ class HuckleberryAPI:
         self._listeners.clear()
         self._listener_callbacks.clear()
 
-    def log_diaper(self, child_uid: str, mode: DiaperMode,
+    def log_diaper_at_time(self, child_uid: str, mode: DiaperMode,
                    pee_amount: DiaperAmount | None = None, poo_amount: DiaperAmount | None = None,
                    color: PooColor | None = None, consistency: PooConsistency | None = None,
-                   diaper_rash: bool = False, notes: str | None = None) -> None:
+                   diaper_rash: bool = False, notes: str | None = None, time_ms: float | None = None) -> None:
         """
-        Log a diaper change.
+        Log a diaper change at a specific time.
 
         Args:
             child_uid: Child unique identifier
@@ -1039,16 +1149,21 @@ class HuckleberryAPI:
             consistency: Poo consistency - 'solid', 'loose', 'runny', 'mucousy', 'hard', 'pebbles', 'diarrhea'
             diaper_rash: Whether baby has diaper rash
             notes: Optional notes about this diaper change
+            time_ms: Time in milliseconds when diaper change occurred. If None, uses current time.
         """
-        _LOGGER.info("Logging diaper change for child %s: mode=%s", child_uid, mode)
+        if time_ms is None:
+            current_time = time.time()
+            interval_timestamp_ms = int(current_time * 1000)
+        else:
+            current_time = time_ms / 1000.0
+            interval_timestamp_ms = int(time_ms)
+
+        _LOGGER.info("Logging diaper change for child %s at time %s: mode=%s", child_uid, interval_timestamp_ms, mode)
 
         client = self._get_firestore_client()
         diaper_ref = client.collection("diaper").document(child_uid)
 
-        current_time = time.time()
-
         # Create interval ID (timestamp in ms + random suffix)
-        interval_timestamp_ms = int(current_time * 1000)
         interval_id = f"{interval_timestamp_ms}-{uuid.uuid4().hex[:20]}"
 
         # Build interval data (matching app behavior - minimal fields by default)
@@ -1107,6 +1222,35 @@ class HuckleberryAPI:
             raise
 
         _LOGGER.info("Diaper change logged successfully")
+
+    def log_diaper(self, child_uid: str, mode: DiaperMode,
+                   pee_amount: DiaperAmount | None = None, poo_amount: DiaperAmount | None = None,
+                   color: PooColor | None = None, consistency: PooConsistency | None = None,
+                   diaper_rash: bool = False, notes: str | None = None) -> None:
+        """
+        Log a diaper change.
+
+        Args:
+            child_uid: Child unique identifier
+            mode: One of 'pee', 'poo', 'both', 'dry'
+            pee_amount: Pee amount - 'little', 'medium', 'big', or None (no quantity)
+            poo_amount: Poo amount - 'little', 'medium', 'big', or None (no quantity)
+            color: Poo color - 'yellow', 'brown', 'black', 'green', 'red', 'gray'
+            consistency: Poo consistency - 'solid', 'loose', 'runny', 'mucousy', 'hard', 'pebbles', 'diarrhea'
+            diaper_rash: Whether baby has diaper rash
+            notes: Optional notes about this diaper change
+        """
+        self.log_diaper_at_time(
+            child_uid=child_uid,
+            mode=mode,
+            pee_amount=pee_amount,
+            poo_amount=poo_amount,
+            color=color,
+            consistency=consistency,
+            diaper_rash=diaper_rash,
+            notes=notes,
+            time_ms=None
+        )
 
     def log_growth(self, child_uid: str, weight: float | None = None, height: float | None = None,
                    head: float | None = None, units: MeasurementUnits = "metric") -> None:
